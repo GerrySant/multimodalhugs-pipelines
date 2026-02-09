@@ -10,6 +10,11 @@ base=$1
 dry_run=$2
 estimator=$3
 model_name=$4
+env_name=${5}
+
+if [[ -z "$env_name" ]]; then
+    env_name="$estimator"
+fi
 
 data=$base/data
 scripts=$base/scripts
@@ -34,9 +39,8 @@ which activate
 # perhaps not necessary anymore
 # eval "$(conda shell.bash hook)"
 
-echo "Executing: source activate $venvs/$estimator"
-
-source activate $venvs/$estimator
+echo "Executing: source activate $venvs/$env_name"
+source activate $venvs/$env_name
 
 echo "Python after activating:"
 which python

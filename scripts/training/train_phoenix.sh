@@ -26,6 +26,31 @@ label_smoothing_factor=$9
 dataloader_num_workers=${10}
 fp16=${11}
 seed=${12}
+env_name=${13}
+train_tsv_metadata_filename=${14}
+validation_tsv_metadata_filename=${15}
+test_tsv_metadata_filename=${16}
+
+
+# if no environment name is passed, default to estimator
+if [[ -z "$env_name" ]]; then
+    env_name="$estimator"
+fi
+
+# if no train_tsv_metadata_filename name is passed, default to rwth_phoenix2014_t.train.tsv
+if [[ -z "$train_tsv_metadata_filename" ]]; then
+    train_tsv_metadata_filename="rwth_phoenix2014_t.train.tsv"
+fi
+
+# if no validation_tsv_metadata_filename name is passed, default to rwth_phoenix2014_t.validation.tsv
+if [[ -z "$validation_tsv_metadata_filename" ]]; then
+    validation_tsv_metadata_filename="rwth_phoenix2014_t.validation.tsv"
+fi
+
+# if no test_tsv_metadata_filename name is passed, default to rwth_phoenix2014_t.test.tsv
+if [[ -z "$test_tsv_metadata_filename" ]]; then
+    test_tsv_metadata_filename="rwth_phoenix2014_t.test.tsv"
+fi
 
 data=$base/data
 preprocessed=$data/$estimator/preprocessed
@@ -70,9 +95,8 @@ which python
 echo "activate path:"
 which activate
 
-echo "Executing: source activate $venvs/$estimator"
-
-source activate $venvs/$estimator
+echo "Executing: source activate $venvs/$env_name"
+source activate $venvs/$env_name
 
 echo "Python after activating:"
 which python
@@ -111,9 +135,22 @@ fi
 
 if [[ "$estimator" == "mediapipe" ]]; then
     feat_dim=534
-elif [[ "$estimator" == "mmposewholebody" ]]; then
 
+elif [[ "$estimator" == "mmposewholebody" ]]; then
     feat_dim=266
+
+elif [[ "$estimator" == "alphapose_133" ]]; then
+    feat_dim=266
+
+elif [[ "$estimator" == "alphapose_136" ]]; then
+    feat_dim=272
+
+elif [[ "$estimator" == "sapiens" ]]; then
+    feat_dim=620
+
+elif [[ "$estimator" == "smplest_x" ]]; then
+    feat_dim=278
+
 else
     echo "WARNING: Unknown estimator: $estimator. Defaulting to feat_dim=534"
     feat_dim=534
@@ -122,9 +159,9 @@ fi
 python $scripts/training/create_config.py \
     --run-name "phoenix-$estimator" \
     --config-dir $configs_sub \
-    --train-metadata-file $preprocessed/rwth_phoenix2014_t.train.tsv \
-    --validation-metadata-file $preprocessed/rwth_phoenix2014_t.validation.tsv \
-    --test-metadata-file $preprocessed/rwth_phoenix2014_t.test.tsv \
+    --train-metadata-file $preprocessed/$train_tsv_metadata_filename \
+    --validation-metadata-file $preprocessed/$validation_tsv_metadata_filename \
+    --test-metadata-file $preprocessed/$test_tsv_metadata_filename \
     --new-vocabulary "__dgs__" \
     --feat-dim $feat_dim \
     --learning-rate $learning_rate \

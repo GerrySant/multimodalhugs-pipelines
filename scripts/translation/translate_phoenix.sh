@@ -10,6 +10,11 @@ base=$1
 dry_run=$2
 estimator=$3
 model_name=$4
+env_name=${5}
+
+if [[ -z "$env_name" ]]; then
+    env_name="$estimator"
+fi
 
 venvs=$base/venvs
 configs=$base/configs
@@ -36,9 +41,8 @@ which python
 echo "activate path:"
 which activate
 
-echo "Executing: source activate $venvs/$estimator"
-
-source activate $venvs/$estimator
+echo "Executing: source activate $venvs/$env_name"
+source activate $venvs/$env_name
 
 echo "Python after activating:"
 which python

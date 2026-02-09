@@ -15,6 +15,14 @@
 : "${fp16:="true"}"
 : "${seed:=42}"
 
+# Optional environment name (defaults to estimator)
+: "${env_name:="$estimator"}"
+
+# Optional TSV metadata filenames (defaults to Phoenix)
+: "${train_tsv_metadata_filename:="rwth_phoenix2014_t.train.tsv"}"
+: "${validation_tsv_metadata_filename:="rwth_phoenix2014_t.validation.tsv"}"
+: "${test_tsv_metadata_filename:="rwth_phoenix2014_t.test.tsv"}"
+
 # Check if estimator is set
 if [[ -z "$estimator" ]]; then
 echo "Error: estimator is not set. Please provide a value for 'estimator' in scripts/running/run_basic.sh." >&2
@@ -106,7 +114,10 @@ id_train=$(
     $scripts/training/train_phoenix.sh \
     $base $dry_run $estimator $model_name \
     $learning_rate $gradient_accumulation_steps $warmup_steps $batch_size $label_smoothing_factor \
-    $dataloader_num_workers $fp16 $seed 
+    $dataloader_num_workers $fp16 $seed $env_name \
+    $train_tsv_metadata_filename \
+    $validation_tsv_metadata_filename \
+    $test_tsv_metadata_filename
 )
 
 echo "  id_train: $id_train | $logs_sub/slurm-$id_train.out"  | tee -a $logs_sub/MAIN
@@ -119,7 +130,7 @@ id_translate=$(
     --dependency=afterok:$id_train \
     $SLURM_LOG_ARGS \
     $scripts/translation/translate_phoenix.sh \
-    $base $dry_run $estimator $model_name
+    $base $dry_run $estimator $model_name $env_name
 )
 
 echo "  id_translate: $id_translate | $logs_sub/slurm-$id_translate.out"  | tee -a $logs_sub/MAIN
@@ -132,7 +143,7 @@ id_evaluate=$(
     --dependency=afterok:$id_translate \
     $SLURM_LOG_ARGS \
     $scripts/evaluation/evaluate.sh \
-    $base $dry_run $estimator $model_name
+    $base $dry_run $estimator $model_name $env_name
 )
 
 echo "  id_evaluate: $id_evaluate | $logs_sub/slurm-$id_evaluate.out"  | tee -a $logs_sub/MAIN

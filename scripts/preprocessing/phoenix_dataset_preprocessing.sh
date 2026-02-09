@@ -8,6 +8,13 @@
 base=$1
 dry_run=$2
 estimator=$3
+env_name=${4}
+
+# if no environment name is passed, default to estimator
+if [[ -z "$env_name" ]]; then
+    env_name="$estimator"
+fi
+
 
 scripts=$base/scripts
 data=$base/data
@@ -17,18 +24,36 @@ estimator_data=$data/$estimator
 poses=$estimator_data/poses
 preprocessed=$estimator_data/preprocessed
 
+echo "preprocessed: $preprocessed"
+
 mkdir -p $data
 mkdir -p $estimator_data
 mkdir -p $poses $preprocessed
 
 # maybe skip
 
-if [[ -s $preprocessed/rwth_phoenix2014_t.train.tsv ]]; then
-    echo "Preprocessed file exists: $preprocessed/rwth_phoenix2014_t.train.tsv"
-    echo "Skipping"
+# if [[ -s $preprocessed/rwth_phoenix2014_t.train.tsv ]]; then
+#     echo "Preprocessed file exists: $preprocessed/rwth_phoenix2014_t.train.tsv"
+#     echo "Skipping"
+#     exit 0
+# else
+#     echo "Preprocessed files do not exist yet"
+# fi
+
+shopt -s nullglob nocaseglob
+
+train_files=("$preprocessed"/*train*.tsv)
+
+found=${#train_files[@]}
+
+shopt -u nocaseglob
+
+if [ "$found" -gt 0 ]; then
+    echo "Preprocessed train TSV file(s) found:"
+    printf '  %s\n' "${train_files[@]}"
     exit 0
 else
-    echo "Preprocessed files do not exist yet"
+    echo "No preprocessed train TSV files found yet"
 fi
 
 # measure time
@@ -43,9 +68,8 @@ which python
 echo "activate path:"
 which activate
 
-echo "Executing: source activate $venvs/$estimator" 
-
-source activate $venvs/$estimator 
+echo "Executing: source activate $venvs/$env_name"
+source activate $venvs/$env_name
 
 echo "Python after activating:"
 which python
