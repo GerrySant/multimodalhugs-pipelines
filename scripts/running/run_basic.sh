@@ -10,7 +10,7 @@ scripts=$base/scripts
 dry_run="false"
 
 # set to your desired estimator
-estimator="smplest_x" # options: mmposewholebody, mediapipe, openpifpaf, smplest_x, sapiens, alphapose_133, alphapose_136
+estimator="alphapose_136" # options: mmposewholebody, mediapipe, openpifpaf, smplest_x, sapiens, alphapose_133, alphapose_136
 
 model_name="phoenix_$estimator"
 
