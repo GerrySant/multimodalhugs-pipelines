@@ -16,7 +16,7 @@ model:
   multimodal_mapper_dropout: 0.1                  # Dropout probability for the Multimodal Mapper to prevent overfitting.
   backbone_type: {backbone_type}                  # Identifier for the pretrained backbone (e.g., "m2m_100").
   pretrained_backbone: {pretrained_backbone}      # Weights or checkpoint identifier for the pretrained backbone.
-  feat_dim: 534                                   # Dimension of the Feature Extractor output. If features are extracted off-line, the dimentionality of features.
+  feat_dim: {feat_dim}                            # Dimension of the Feature Extractor output. If features are extracted off-line, the dimentionality of features.
 
 training:
   run_name: {run_name}                             # The name or identifier of the model configuration.
@@ -90,6 +90,7 @@ def fill_template(args: argparse.Namespace) -> str:
         test_metadata_file=args.test_metadata_file,
         backbone_type=args.backbone_type,
         pretrained_backbone=args.pretrained_backbone,
+        feat_dim=args.feat_dim,
         reduce_holistic_poses=args.reduce_holistic_poses,
         max_steps=max_steps,
         text_tokenizer_path=args.text_tokenizer_path,
@@ -125,9 +126,11 @@ def parse_arguments():
     parser.add_argument("--pretrained-backbone", type=str, help="Weights or checkpoint identifier for the pretrained "
                                                                 "backbone. (default: facebook/m2m100_418M).",
                         default="facebook/m2m100_418M", required=False)
-
+    parser.add_argument("--feat-dim", type=int, help="Dimension of the Feature Extractor output (default: 534).",
+                        default=534, required=False) 
+    
     parser.add_argument("--reduce-holistic-poses", action="store_true", default=False,
-                        help="Reduce holistic poses (default: False).", required=False)
+                        help="Reduce holistic pose (default: False).", required=False)
 
     parser.add_argument("--learning-rate", type=float, help="The initial learning rate for AdamW optimizer (default: 5e-05).",
                         default=5e-05, required=False)
@@ -165,13 +168,14 @@ def main():
 
     filled_template = fill_template(args)
 
-    config_path = f"{args.config_dir}/config_{args.run_name}.yaml"
+    config_path = f"{args.config_dir}/config-{args.run_name}.yaml"
 
     logging.debug(f"Writing config to: '{config_path}'")
 
     with open(config_path, "w") as outhandle:
         outhandle.write(filled_template)
 
+    print(filled_template)
 
 if __name__ == "__main__":
     main()

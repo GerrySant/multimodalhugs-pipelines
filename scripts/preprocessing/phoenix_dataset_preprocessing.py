@@ -1,131 +1,133 @@
-#!/usr/bin/env python3
-
 import os
+import glob
+import subprocess
 import argparse
-import importlib
 import logging
 import csv
-import itertools
+import time
 
-import tensorflow as tf
-import tensorflow_datasets as tfds
-import sign_language_datasets.datasets
+from typing import Iterator, Dict, List, Optional
 
-from pose_format.utils.reader import BufferReader
-from pose_format.pose import Pose, PoseHeader
-from pose_format.numpy import NumPyPoseBody
-from sign_language_datasets.datasets.config import SignDatasetConfig
-
-from typing import Iterator, Optional, Dict, List
-
+Example = Dict[str, str]
 
 # Parse command-line arguments
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Process and transform a TSV file.")
+    parser.add_argument("--estimator", type=str, help="Which pose estimator to use.")
     parser.add_argument("--pose-dir", type=str, help="Where to save poses.")
     parser.add_argument("--output-dir", type=str, help="Path to the output TSV files.")
     parser.add_argument("--encoder-prompt", type=str, default="__dgs__", help="encoder prompt string.")
     parser.add_argument("--decoder-prompt", type=str, default="__de__", help="decoder prompt string.")
-
     parser.add_argument("--tfds-data-dir", type=str, default=None,
                         help="TFDS data folder to cache downloads.", required=False)
+    parser.add_argument("--video-dir", type=str, default=None,
+                        help="Location of the Phoenix dataset videos.", required=False)
     parser.add_argument("--dry-run", action="store_true", default=False,
                         help="Process very few elements only.", required=False)
     return parser.parse_args()
 
+def load_phoenix_videos():
+    #TODO: implement logic that downloads the Phoenix images and turns them into videos and saves that into the data directory. 
+    #For now, assume that the data is already present at --video-dir in three partitions (validation, train, test)
+    pass
 
-def load_pose_header(dataset_name: str) -> PoseHeader:
+def load_split_metadata(video_dir: str, split_name: str) -> Dict[str, str]:
     """
-    Workaround from:
-    https://github.com/sign-language-processing/datasets/issues/84
-
-    :param dataset_name:
-    :return:
+    Loads the Phoenix TSV metadata for a given split and returns a mapping
+    from video basename (without extension) -> German text.
     """
-    # Dynamically import the dataset module
-    dataset_module = importlib.import_module(f"sign_language_datasets.datasets.{dataset_name}.{dataset_name}")
+    tsv_path = os.path.join(
+        video_dir,
+        f"PHOENIX-2014-T.{split_name}.corpus_poses.tsv"
+    )
 
-    # Read the pose header from the dataset's predefined file
-    with open(dataset_module._POSE_HEADERS["holistic"], "rb") as buffer:
-        pose_header = PoseHeader.read(BufferReader(buffer.read()))
+    if not os.path.exists(tsv_path):
+        raise FileNotFoundError(f"Metadata TSV not found: {tsv_path}")
 
-    return pose_header
+    mapping = {}
+    with open(tsv_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            # Extract basename of video file (without extension)
+            video_filename = os.path.basename(row["signal"])
+            datum_id = os.path.splitext(video_filename)[0]
+            mapping[datum_id] = row["output"]
+    return mapping
 
-
-def load_dataset(data_dir: Optional[str] = None):
-    """
-    :param data_dir:
-    :return:
-    """
-
-    config = SignDatasetConfig(name="rwth_phoenix2014_t",
-                               version="3.0.0",
-                               include_video=False,
-                               process_video=False,
-                               fps=25,
-                               include_pose="holistic")
-
-    rwth_phoenix2014_t = tfds.load('rwth_phoenix2014_t', builder_kwargs=dict(config=config), data_dir=data_dir)
-
-    return rwth_phoenix2014_t
-
-
-Example = Dict[str, str]
-
-
-def generate_examples(dataset: tf.data.Dataset,
+def generate_examples(estimator: str,
+                      video_dir: str,
                       split_name: str,
-                      pose_header: PoseHeader,
-                      pose_dir: str,
+                      split_pose_dir: str,
                       dry_run: bool = False) -> Iterator[Example]:
     """
-    :param dataset:
-    :param split_name: "train", "validation" or "test"
-    :param pose_header:
-    :param pose_dir:
-    :param dry_run:
-    :return:
+    :param video_dir: The estimator to use: select from: "mmposewholebody"
+    :param video_dir: Base path, e.g. "{base}/data/phoenix_videos"
+    :param split_name: "train", "validation", or "test" (these should be directories inside video_dir)
+    :param pose_dir: Directory where .pose files will be written
+    :param dry_run: If True, process only a small number of videos
     """
 
+    split_dir = os.path.join(video_dir, split_name)
+    if not os.path.isdir(split_dir):
+        raise ValueError(f"Split directory does not exist: {split_dir}")
+
+    os.makedirs(split_pose_dir, exist_ok=True)
+
+    video_paths = sorted(glob.glob(os.path.join(split_dir, "*.mp4")))
+
     if dry_run:
-        data_iterator = itertools.islice(dataset[split_name], 0, 10)
-    else:
-        data_iterator = dataset[split_name]
+        video_paths = video_paths[:10]
 
-    for datum in data_iterator:
+    logging.info(f"Found {len(video_paths)} videos in {split_dir}")
 
-        datum_id = datum["id"].numpy().decode('utf-8')
+    # Load TSV metadata mapping
+    datum_text_mapping = load_split_metadata(video_dir, split_name)
 
-        text = datum['text'].numpy().decode('utf-8')
+    for video_path in video_paths:
+        tic = time.perf_counter()
+        datum_id = os.path.splitext(os.path.basename(video_path))[0]
+        pose_filepath = os.path.join(split_pose_dir, f"{datum_id}.pose")
 
-        pose_data = datum['pose']['data'].numpy()
-        pose_confidence = datum['pose']['conf'].numpy()
+        # skip if already processed
+        if os.path.exists(pose_filepath):
+            logging.debug(f"Pose already exists, skipping: {pose_filepath}")
+        
+        else:
+            cmd = [
+                "video_to_pose", 
+                "--format", estimator, 
+                "-i", video_path, 
+                "-o", pose_filepath,
+            ] #TODO: change so that if dry-run is true, we use cpu processing 
+            
+            if dry_run:
+                logging.debug("Running command: %s", " ".join(cmd))
 
-        fps = int(datum['pose']['fps'].numpy())
+            try:
+                subprocess.run(
+                    cmd,
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            except subprocess.CalledProcessError as e:
+                logging.error("Pose estimation failed for %s", video_path)
+                logging.error("STDOUT:\n%s", e.stdout)
+                logging.error("STDERR:\n%s", e.stderr)
+                raise
+        
+        text = datum_text_mapping.get(datum_id, "")
+        if not text:
+            logging.warning(f"No German text found for video: {datum_id}")
 
-        pose_body = NumPyPoseBody(fps=fps,
-                                  data=pose_data,
-                                  confidence=pose_confidence)
-
-        # Construct Pose object and write to file
-        pose = Pose(pose_header, pose_body)
-
-        pose_filepath = os.path.join(pose_dir, f"{datum_id}.pose")
-
-        if dry_run:
-            logging.debug(f"Writing pose to: '{pose_filepath}'")
-
-        with open(pose_filepath, "wb") as data_buffer:
-            pose.write(data_buffer)
-
-        example = {
-            "datum_id": datum_id,
+        yield {
+            "datum_id": datum_id, 
+            "video_filepath": video_path, 
             "text": text,
             "pose_filepath": pose_filepath
         }
-
-        yield example
-
+        logging.debug(f"Processed video {datum_id} in {time.perf_counter() - tic:.2f} seconds\n")
 
 def write_examples_tsv(examples: List[Example],
                        output_dir: str,
@@ -165,7 +167,6 @@ def write_examples_tsv(examples: List[Example],
 
             writer.writerow(row_dict)
 
-
 def main():
     # Parse arguments
     args = parse_arguments()
@@ -173,29 +174,38 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
     logging.debug(args)
 
-    phoenix_with_poses = load_dataset(data_dir=args.tfds_data_dir)
+    logging.debug(f"Doing pose estimation with estimator: {args.estimator}")
 
-    pose_header = load_pose_header("rwth_phoenix2014_t")
+    load_phoenix_videos()
 
     stats = {}
 
-    for split_name in ["train", "validation", "test"]:
-        examples = list(generate_examples(dataset=phoenix_with_poses,
-                                          split_name=split_name,
-                                          pose_header=pose_header,
-                                          pose_dir=args.pose_dir,
-                                          dry_run=args.dry_run))
+    for split_name in ["train", "test", "validation"]:
+
+        split_pose_dir = os.path.join(args.pose_dir, split_name)
+        os.makedirs(split_pose_dir, exist_ok=True)
+
+        logging.debug(f"\n\n\nGenerating examples for split: {split_name}\n")
+        
+        examples = list(generate_examples(estimator=args.estimator,
+                                            video_dir=args.video_dir,
+                                            split_name=split_name,
+                                            split_pose_dir=split_pose_dir,
+                                            dry_run=args.dry_run))
+        
+        print(examples)
 
         stats[split_name] = len(examples)
 
         write_examples_tsv(examples=examples,
-                           output_dir=args.output_dir,
-                           encoder_prompt=args.encoder_prompt,
-                           decoder_prompt=args.decoder_prompt,
-                           split_name=split_name)
+                    output_dir=args.output_dir,
+                    encoder_prompt=args.encoder_prompt,
+                    decoder_prompt=args.decoder_prompt,
+                    split_name=split_name)
 
     logging.debug("Number of examples found:")
     logging.debug(stats)
+
 
 
 if __name__ == "__main__":
