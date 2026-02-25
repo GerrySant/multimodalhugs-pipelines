@@ -27,3 +27,6 @@ conda create -y --prefix $venvs/multiple_support python=3.11.13
 
 # venv for Alphapose pose estimation
 conda create -y --prefix $venvs/alphapose_pose_extractor python=3.10
+
+# venv for Alphapose pose estimation
+conda create -y --prefix $venvs/smplest_x_pose_extractor python=3.8
