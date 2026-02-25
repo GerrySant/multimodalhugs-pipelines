@@ -104,6 +104,103 @@ python -m pip install --no-build-isolation "cython-bbox==0.1.5"
 export PIP_NO_BUILD_ISOLATION=1
 python setup.py build develop
 
+python -m pip install gdown
+
+# -------------------------
+# Download YOLOv3-SPP weights (required by AlphaPose detector)
+# -------------------------
+
+YOLO_DIR="$alphapose_dir/detector/yolo/data"
+YOLO_WEIGHTS="$YOLO_DIR/yolov3-spp.weights"
+YOLO_URL="https://pjreddie.com/media/files/yolov3-spp.weights"
+
+mkdir -p "$YOLO_DIR"
+
+if [[ ! -f "$YOLO_WEIGHTS" ]]; then
+  echo "Downloading YOLOv3-SPP weights..."
+  echo "Destination: $YOLO_WEIGHTS"
+
+  # try curl first, fallback to wget
+  if command -v curl >/dev/null 2>&1; then
+    curl -L --fail -o "$YOLO_WEIGHTS" "$YOLO_URL"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -O "$YOLO_WEIGHTS" "$YOLO_URL"
+  else
+    echo "ERROR: neither curl nor wget is available" >&2
+    exit 1
+  fi
+else
+  echo "YOLO weights already present, skipping download."
+fi
+
+# sanity check (file should be ~248MB)
+if [[ -f "$YOLO_WEIGHTS" ]]; then
+  size=$(stat -c%s "$YOLO_WEIGHTS")
+  if [[ "$size" -lt 200000000 ]]; then
+    echo "ERROR: downloaded weights look incomplete ($size bytes)" >&2
+    exit 1
+  fi
+fi
+
+# -------------------------
+# Download AlphaPose SPPE checkpoint
+# -------------------------
+
+AP_MODEL_DIR="$alphapose_dir/pretrained_models"
+AP_MODEL_FILE="multi_domain_fast50_dcn_combined_256x192.pth"
+AP_MODEL_PATH="$AP_MODEL_DIR/$AP_MODEL_FILE"
+AP_MODEL_ID="1wX1Z2ZOoysgSNovlgiEtJKpbR8tUBWYR"
+AP_MODEL_ZOO_URL="https://github.com/MVIG-SJTU/AlphaPose/blob/master/docs/MODEL_ZOO.md#multi-domain-models-strongly-recommended"
+
+manual_download_instructions() {
+  echo "ERROR: Could not download AlphaPose checkpoint automatically." >&2
+  echo "" >&2
+  echo "Please download it manually from:" >&2
+  echo "  $AP_MODEL_ZOO_URL" >&2
+  echo "" >&2
+  echo "In that table, download the model from the *second row* (136 keypoints):" >&2
+  echo "  multi_domain_fast50_dcn_combined_256x192.pth" >&2
+  echo "" >&2
+  echo "Then place it at:" >&2
+  echo "  $AP_MODEL_PATH" >&2
+}
+
+mkdir -p "$AP_MODEL_DIR"
+
+if [[ ! -f "$AP_MODEL_PATH" ]]; then
+  echo "Downloading AlphaPose checkpoint..."
+  echo "Destination: $AP_MODEL_PATH"
+
+  # Ensure gdown exists
+  if ! command -v gdown >/dev/null 2>&1; then
+    echo "gdown not found. Installing it..." >&2
+    python -m pip install -q gdown || { manual_download_instructions; exit 1; }
+  fi
+
+  # Try download
+  gdown --fuzzy "https://drive.google.com/file/d/$AP_MODEL_ID/view" -O "$AP_MODEL_PATH"
+  rc=$?
+
+  if [[ $rc -ne 0 ]]; then
+    rm -f "$AP_MODEL_PATH"
+    manual_download_instructions
+    exit 1
+  fi
+else
+  echo "AlphaPose checkpoint already present, skipping."
+fi
+
+# sanity check (~102MB expected)
+if [[ -f "$AP_MODEL_PATH" ]]; then
+  size=$(stat -c%s "$AP_MODEL_PATH" 2>/dev/null || echo 0)
+  if [[ "$size" -lt 50000000 ]]; then
+    echo "ERROR: checkpoint file looks incomplete ($size bytes): $AP_MODEL_PATH" >&2
+    rm -f "$AP_MODEL_PATH"
+    manual_download_instructions
+    exit 1
+  fi
+fi
+
 echo "✅ AlphaPose pose extractor environment ready."
 echo "Activate with:  source activate $venvs/alphapose_pose_extractor"
 echo "Repo path:      $alphapose_dir"
