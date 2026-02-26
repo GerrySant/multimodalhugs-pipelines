@@ -35,10 +35,6 @@ if [[ "$estimator" == "smplest_x" \
    || "$estimator" == "sapiens" \
    || "$estimator" == "alphapose_133" \
    || "$estimator" == "alphapose_136" ]]; then
-
-    train_tsv_metadata_filename="PHOENIX-2014-T.train.corpus_${estimator}_poses.tsv"
-    validation_tsv_metadata_filename="PHOENIX-2014-T.validation.corpus_${estimator}_poses.tsv"
-    test_tsv_metadata_filename="PHOENIX-2014-T.test.corpus_${estimator}_poses.tsv"
     env_name="multiple_support"
 fi
 

@@ -4,17 +4,17 @@
 # $base
 # $dry_run
 # $estimator 
+# $env_name 
 
-base=$1
-dry_run=$2
-estimator=$3
-env_name=${4}
+# base=$1
+# dry_run=$2
+# estimator=$3
+# env_name=${4}
 
 # if no environment name is passed, default to estimator
 if [[ -z "$env_name" ]]; then
     env_name="$estimator"
 fi
-
 
 scripts=$base/scripts
 data=$base/data
@@ -24,18 +24,13 @@ estimator_data=$data/$estimator
 poses=$estimator_data/poses
 preprocessed=$estimator_data/preprocessed
 
-echo "preprocessed: $preprocessed"
-
 mkdir -p $data
 mkdir -p $estimator_data
 mkdir -p $poses $preprocessed
 
 shopt -s nullglob nocaseglob
-
 train_files=("$preprocessed"/*train*.tsv)
-
 found=${#train_files[@]}
-
 shopt -u nullglob nocaseglob
 
 if [ "$found" -gt 0 ]; then
@@ -90,7 +85,7 @@ case "$estimator" in
             echo "Processing split: $split"
             python main/json_pose_estimator.py \
                 --video_path "$videos_path" \
-                --ckpt_name smplest_x_h \
+                --ckpt_name "smplest_x_h" \
                 --json_output_path "$output_path"
         done
 
