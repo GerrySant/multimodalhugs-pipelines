@@ -197,6 +197,35 @@ if [[ -f "$AP_MODEL_PATH" ]]; then
     echo "ERROR: checkpoint file looks incomplete ($size bytes): $AP_MODEL_PATH" >&2
     rm -f "$AP_MODEL_PATH"
     manual_download_instructions
+  fi
+fi
+
+# -------------------------
+# Download AlphaPose WholeBody133 checkpoint
+# -------------------------
+
+WB_MODEL_DIR="$alphapose_dir/pretrained_models"
+WB_MODEL_FILE="coco_wholebody133_fast50_regression_256x192.pth"
+WB_MODEL_PATH="$WB_MODEL_DIR/$WB_MODEL_FILE"
+WB_MODEL_ID="1WQlwRw7KiKBI2Wyb-lvnQX29R29NbhLz"
+
+mkdir -p "$WB_MODEL_DIR"
+
+if [[ ! -f "$WB_MODEL_PATH" ]]; then
+  echo "Downloading AlphaPose WholeBody133 checkpoint..."
+  echo "Destination: $WB_MODEL_PATH"
+
+  gdown --fuzzy "https://drive.google.com/file/d/$WB_MODEL_ID/view" \
+        -O "$WB_MODEL_PATH"
+else
+  echo "WholeBody133 checkpoint already present, skipping."
+fi
+
+# sanity check (~230MB expected)
+if [[ -f "$WB_MODEL_PATH" ]]; then
+  size=$(stat -c%s "$WB_MODEL_PATH")
+  if [[ "$size" -lt 100000000 ]]; then
+    echo "ERROR: WholeBody133 checkpoint looks incomplete ($size bytes)" >&2
     exit 1
   fi
 fi

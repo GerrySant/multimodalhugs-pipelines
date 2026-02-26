@@ -24,6 +24,12 @@ def parse_arguments():
                         help="Location of the Phoenix dataset videos.", required=False)
     parser.add_argument("--dry-run", action="store_true", default=False,
                         help="Process very few elements only.", required=False)
+    parser.add_argument(
+        "--poses-precomputed",
+        action="store_true",
+        help="Skip pose extraction and assume pose files already exist."
+    )
+
     return parser.parse_args()
 
 def load_phoenix_videos():
@@ -58,13 +64,16 @@ def generate_examples(estimator: str,
                       video_dir: str,
                       split_name: str,
                       split_pose_dir: str,
-                      dry_run: bool = False) -> Iterator[Example]:
+                      dry_run: bool = False,
+                      poses_precomputed: bool = False) -> Iterator[Example]:
     """
+    Generates TSV examples.
     :param video_dir: The estimator to use: select from: "mmposewholebody"
     :param video_dir: Base path, e.g. "{base}/data/phoenix_videos"
     :param split_name: "train", "validation", or "test" (these should be directories inside video_dir)
     :param pose_dir: Directory where .pose files will be written
     :param dry_run: If True, process only a small number of videos
+    :param poses_precomputed: If True, skips the video to pose processing.
     """
 
     split_dir = os.path.join(video_dir, split_name)
@@ -80,7 +89,6 @@ def generate_examples(estimator: str,
 
     logging.info(f"Found {len(video_paths)} videos in {split_dir}")
 
-    # Load TSV metadata mapping
     datum_text_mapping = load_split_metadata(video_dir, split_name)
 
     for video_path in video_paths:
@@ -88,18 +96,21 @@ def generate_examples(estimator: str,
         datum_id = os.path.splitext(os.path.basename(video_path))[0]
         pose_filepath = os.path.join(split_pose_dir, f"{datum_id}.pose")
 
-        # skip if already processed
-        if os.path.exists(pose_filepath):
-            logging.debug(f"Pose already exists, skipping: {pose_filepath}")
-        
-        else:
+        # -------------------------------------------------
+        # Only run pose extraction if needed
+        # -------------------------------------------------
+        if not os.path.exists(pose_filepath):
+            if poses_precomputed:
+                logging.warning(f"Pose missing, skipping: {pose_filepath}")
+                continue
+
             cmd = [
-                "video_to_pose", 
-                "--format", estimator, 
-                "-i", video_path, 
+                "video_to_pose",
+                "--format", estimator,
+                "-i", video_path,
                 "-o", pose_filepath,
-            ] #TODO: change so that if dry-run is true, we use cpu processing 
-            
+            ]
+
             if dry_run:
                 logging.debug("Running command: %s", " ".join(cmd))
 
@@ -122,12 +133,13 @@ def generate_examples(estimator: str,
             logging.warning(f"No German text found for video: {datum_id}")
 
         yield {
-            "datum_id": datum_id, 
-            "video_filepath": video_path, 
+            "datum_id": datum_id,
+            "video_filepath": video_path,
             "text": text,
             "pose_filepath": pose_filepath
         }
         logging.debug(f"Processed video {datum_id} in {time.perf_counter() - tic:.2f} seconds\n")
+
 
 def write_examples_tsv(examples: List[Example],
                        output_dir: str,
@@ -186,14 +198,15 @@ def main():
         os.makedirs(split_pose_dir, exist_ok=True)
 
         logging.debug(f"\n\n\nGenerating examples for split: {split_name}\n")
-        
-        examples = list(generate_examples(estimator=args.estimator,
-                                            video_dir=args.video_dir,
-                                            split_name=split_name,
-                                            split_pose_dir=split_pose_dir,
-                                            dry_run=args.dry_run))
-        
-        print(examples)
+
+        examples = list(generate_examples(
+            estimator=args.estimator,
+            video_dir=args.video_dir,
+            split_name=split_name,
+            split_pose_dir=split_pose_dir,
+            dry_run=args.dry_run,
+            poses_precomputed=args.poses_precomputed
+        ))
 
         stats[split_name] = len(examples)
 
